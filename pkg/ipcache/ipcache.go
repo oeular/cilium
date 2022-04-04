@@ -367,7 +367,7 @@ func (ipc *IPCache) upsertLocked(
 	}
 	ipc.identityToIPCache[newIdentity.ID][ip] = struct{}{}
 
-	if hostIP == nil {
+	if hostIP == nil && hostKey == 0 {
 		delete(ipc.ipToHostIPCache, ip)
 	} else {
 		ipc.ipToHostIPCache[ip] = IPKeyPair{IP: hostIP, Key: hostKey}
