@@ -229,7 +229,7 @@ func (d *Daemon) syncEndpointsAndHostIPs() error {
 	}
 
 	for _, ipIDPair := range specialIdentities {
-		hostKey := node.GetIPsecKeyIdentity()
+		hostKey := node.GetEncryptKeyIndex()
 		isHost := ipIDPair.ID == identity.ReservedIdentityHost
 		if isHost {
 			added, err := lxcmap.SyncHostEntry(ipIDPair.IP)
