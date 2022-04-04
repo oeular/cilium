@@ -285,7 +285,16 @@ func (ipc *IPCache) upsertLocked(
 	cachedIdentity, found := ipc.ipToIdentityCache[ip]
 	if found {
 		if !force && !source.AllowOverwrite(cachedIdentity.Source, newIdentity.Source) {
-			return false, NewErrOverwrite(cachedIdentity.Source, newIdentity.Source)
+			// With KubeAPIServer, it can happen that we observe the KubeAPIServer
+			// entry before we have received the IPKeyPair from the node manager.
+			// In this case, we need to merge the entries: We keep everything from
+			// the existing entry, except the hostIP and hostKey
+			if cachedIdentity.Source != source.KubeAPIServer {
+				return false, NewErrOverwrite(cachedIdentity.Source, newIdentity.Source)
+			}
+
+			newIdentity = cachedIdentity
+			k8sMeta = &oldK8sMeta
 		}
 
 		// Skip update if IP is already mapped to the given identity

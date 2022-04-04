@@ -500,9 +500,16 @@ func (s *IPCacheTestSuite) TestIPCacheNamedPorts(c *C) {
 	c.Assert(npm, IsNil)
 }
 
+type dummyEntry struct {
+	id      identityPkg.NumericIdentity
+	hostIP  net.IP
+	hostKey uint8
+}
+
 type dummyListener struct {
-	entries map[string]identityPkg.NumericIdentity
-	ipc     *IPCache
+	entries  map[string]identityPkg.NumericIdentity
+	keypairs map[string]IPKeyPair
+	ipc      *IPCache
 }
 
 func newDummyListener(ipc *IPCache) *dummyListener {
@@ -511,13 +518,23 @@ func newDummyListener(ipc *IPCache) *dummyListener {
 	}
 }
 
+func (dl *dummyListener) reset() {
+	dl.entries = make(map[string]identityPkg.NumericIdentity)
+	dl.keypairs = make(map[string]IPKeyPair)
+}
+
 func (dl *dummyListener) OnIPIdentityCacheChange(modType CacheModification,
 	cidr net.IPNet, oldHostIP, newHostIP net.IP, oldID *Identity,
 	newID Identity, encryptKey uint8, k8sMeta *K8sMetadata) {
 
+	key := cidr.String()
 	switch modType {
 	case Upsert:
-		dl.entries[cidr.String()] = newID.ID
+		dl.entries[key] = newID.ID
+		dl.keypairs[key] = IPKeyPair{
+			IP:  newHostIP,
+			Key: encryptKey,
+		}
 	default:
 		// Ignore, for simplicity we just clear the cache every time
 	}
@@ -532,11 +549,27 @@ func (dl *dummyListener) ExpectMapping(c *C, targetIP string, targetIdentity ide
 	c.Assert(identity.ID, Equals, targetIdentity)
 
 	// Dump reliably supplies the IP once and only the pod identity.
-	dl.entries = make(map[string]identityPkg.NumericIdentity)
+	dl.reset()
 	dl.ipc.DumpToListenerLocked(dl)
 	c.Assert(dl.entries, checker.DeepEquals,
 		map[string]identityPkg.NumericIdentity{
 			targetIP: targetIdentity,
+		})
+}
+
+func (dl *dummyListener) ExpectKeyPair(c *C, targetIP string, targetHostIP net.IP, targetKey uint8) {
+	// Identity lookup directly shows the expected mapping
+	_, exists := dl.ipc.LookupByPrefix(targetIP)
+	c.Assert(exists, Equals, true)
+
+	dl.reset()
+	dl.ipc.DumpToListenerLocked(dl)
+	c.Assert(dl.keypairs, checker.DeepEquals,
+		map[string]IPKeyPair{
+			targetIP: {
+				IP:  targetHostIP,
+				Key: targetKey,
+			},
 		})
 }
 
@@ -582,4 +615,28 @@ func (s *IPCacheTestSuite) TestIPCacheShadowing(c *C) {
 	ipc.Delete(endpointIP, source.KVStore)
 	_, exists := ipc.LookupByPrefix(cidrOverlap)
 	c.Assert(exists, Equals, false)
+}
+
+func (s *IPCacheTestSuite) TestKubeAPIServer(c *C) {
+	remoteNode1IP := net.ParseIP("10.0.0.1")
+	remoteNode1CIDR := "10.0.0.1/32"
+	remoteNode1HostKey := uint8(1)
+
+	ipc := NewIPCache(nil)
+	dl := newDummyListener(ipc)
+
+	_, err := ipc.Upsert(remoteNode1CIDR, nil, 0, nil, Identity{
+		ID:     identityPkg.ReservedIdentityKubeAPIServer,
+		Source: source.KubeAPIServer,
+	})
+	c.Assert(err, IsNil)
+	dl.ExpectMapping(c, remoteNode1CIDR, identityPkg.ReservedIdentityKubeAPIServer)
+
+	_, err = ipc.Upsert(remoteNode1CIDR, remoteNode1IP, remoteNode1HostKey, nil, Identity{
+		ID:     identityPkg.ReservedIdentityRemoteNode,
+		Source: source.CustomResource,
+	})
+	c.Assert(err, IsNil)
+	dl.ExpectMapping(c, remoteNode1CIDR, identityPkg.ReservedIdentityKubeAPIServer)
+	dl.ExpectKeyPair(c, remoteNode1CIDR, remoteNode1IP, remoteNode1HostKey)
 }
