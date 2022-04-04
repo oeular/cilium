@@ -1,10 +1,10 @@
 ACK
 AKS
-Anthos
 APIEndpoint
 AdapterLimitViaAPI
 Alemayhu
 Alibaba
+Anthos
 BPF
 Bertin
 Blanco
@@ -90,7 +90,6 @@ MaskSize
 Mbit
 Mellanox
 Menlo
-mentees
 Mesos
 MiB
 Minikube
@@ -481,6 +480,7 @@ inlining
 inodes
 installIptablesRules
 installNoConntrackIptablesRules
+installRoutes
 integrations
 internet
 intra
@@ -606,6 +606,7 @@ mediabot
 memcache
 memcached
 memcd
+mentees
 metadata
 metricsServer
 microk
